@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser Fingerprint</title>
+</head>
+<body>
+
+<h2>Browser Fingerprint</h2>
+<div id="fingerprint"></div>
+<pre id="error-log" style="color: red;"></pre>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.js"></script>
+
+<script>
+    function getDeviceInfo() {
+        const deviceInfo = {
+            vendor: navigator.vendor,
+            platform: navigator.platform,
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+        };
+        return deviceInfo;
+    }
+
+    function getScreenResolution() {
+        return {
+            width: window.screen.width,
+            height: window.screen.height
+        };
+    }
+
+    function getBrowserInfo() {
+        const userAgent = navigator.userAgent;
+        let browserName = 'Unknown';
+
+        if (userAgent.includes('Chrome')) {
+            browserName = 'Chrome';
+        } else if (userAgent.includes('Firefox')) {
+            browserName = 'Firefox';
+        } else if (userAgent.includes('Safari')) {
+            browserName = 'Safari';
+        } else if (userAgent.includes('Edge')) {
+            browserName = 'Edge';
+        }
+
+        return browserName;
+    }
+
+    function detectPrivateBrowsing() {
+        const testPrivateBrowsing = () => {
+            try {
+                localStorage.setItem('test', '1');
+                localStorage.removeItem('test');
+                return false; // Private browsing is not detected
+            } catch (e) {
+                return true; // Private browsing is detected
+            }
+        };
+        return testPrivateBrowsing();
+    }
+
+    function detectVPN() {
+        // Basic VPN detection (rough).
+        let vpnStatus = 'Unknown';
+        
+        fetch('https://ipinfo.io/json') // Fetch IP info from a public API
+            .then(response => response.json())
+            .then(data => {
+                // A more complex detection should check data.country, region, city, etc.
+                // This is a rough check assuming certain countries have higher VPN usage.
+                if (data.country === 'CN' || data.country === 'RU') {
+                    vpnStatus = 'Possibly using VPN/Proxy';
+                }
+            })
+            .catch(err => {
+                vpnStatus = 'Unable to detect VPN';
+                console.error("VPN detection failed: ", err);
+            });
+
+        return vpnStatus;
+    }
+
+    function getGeolocation(callback) {
+        fetch('https://ipinfo.io/json') // Using ipinfo.io for IP-based geolocation
+            .then(response => response.json())
+            .then(data => {
+                const geolocation = {
+                    ip: data.ip,
+                    city: data.city,
+                    region: data.region,
+                    country: data.country,
+                    loc: data.loc.split(','),
+                    latitude: data.loc.split(',')[0],
+                    longitude: data.loc.split(',')[1]
+                };
+                callback(geolocation);
+            })
+            .catch(error => {
+                callback({ error: 'Geolocation service failed.' });
+                console.error("Geolocation fetch failed: ", error);
+            });
+    }
+
+    function generateFingerprint(data) {
+        const stringData = JSON.stringify(data);
+        const hash = CryptoJS.SHA256(stringData).toString(CryptoJS.enc.Base64);
+        return hash;
+    }
+
+    function displayFingerprint() {
+        const deviceInfo = getDeviceInfo();
+        const screenResolution = getScreenResolution();
+        const browserInfo = getBrowserInfo();
+        const privateBrowsing = detectPrivateBrowsing();
+
+        getGeolocation((geolocation) => {
+            const vpnStatus = detectVPN();
+
+            const fingerprintData = {
+                deviceInfo,
+                screenResolution,
+                browserInfo,
+                privateBrowsing,
+                geolocation,
+                vpnStatus
+            };
+
+            const fingerprintHash = generateFingerprint(fingerprintData);
+
+            const fingerprintOutput = `
+                <strong>Device Info:</strong><br>
+                Vendor: ${deviceInfo.vendor}<br>
+                Platform: ${deviceInfo.platform}<br>
+                User Agent: ${deviceInfo.userAgent}<br>
+                Language: ${deviceInfo.language}<br><br>
+
+                <strong>Screen Resolution:</strong><br>
+                Width: ${screenResolution.width}<br>
+                Height: ${screenResolution.height}<br><br>
+
+                <strong>Browser Info:</strong><br>
+                Browser: ${browserInfo}<br><br>
+
+                <strong>Private Browsing:</strong><br>
+                Private Browsing: ${privateBrowsing ? 'Detected' : 'Not Detected'}<br><br>
+
+                <strong>Geolocation:</strong><br>
+                IP: ${geolocation.ip}<br>
+                City: ${geolocation.city}<br>
+                Region: ${geolocation.region}<br>
+                Country: ${geolocation.country}<br>
+                Latitude: ${geolocation.latitude}<br>
+                Longitude: ${geolocation.longitude}<br><br>
+
+                <strong>VPN Status:</strong><br>
+                ${vpnStatus}<br><br>
+
+                <strong>Generated Fingerprint (SHA-256 Hash):</strong><br>
+                ${fingerprintHash}
+            `;
+
+            document.getElementById('fingerprint').innerHTML = fingerprintOutput;
+        });
+    }
+
+    displayFingerprint();
+</script>
+
+</body>
+</html>
